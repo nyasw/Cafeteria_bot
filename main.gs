@@ -174,7 +174,7 @@ function doPost(e) {
   //取得したデータから、ユーザーが投稿したメッセージを取得
   const userMessage = eventData.message.text;
 
-  if(eventData.message.text = "おい、飯"){
+  if(eventData.message.text == "おい、飯"){
 
     // 応答メッセージ用のAPI URLを定義
     const url = 'https://api.line.me/v2/bot/message/reply';
