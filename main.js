@@ -1,6 +1,6 @@
 //毎日9時に実行
 function dailyPost(){
-  const menuTable = getMenuTable(-3); //0だと今日　1だと明日　-1だと昨日のメニューを取得できる
+  const menuTable = getMenuTable(0); //0だと今日　1だと明日　-1だと昨日のメニューを取得できる
 
   if(menuTable.status == "ok"){
     console.log(menuTable.text);
