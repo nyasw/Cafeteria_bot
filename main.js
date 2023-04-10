@@ -125,7 +125,7 @@ function gptCall(menuTexts) {
   console.log(request);
 
   var responce = requestChatgpt(request);
-  postDiscord(responce,"TZU学食bot",GAKUSHOKU_GPT_WEBHOOK_URL);
+  postDiscord(responce,"TZU高級学食bot",GAKUSHOKU_GPT_WEBHOOK_URL);
 }
 
 //GPTのAPI
@@ -161,45 +161,63 @@ function requestChatgpt(sendMessage) {
   return response.choices[0].message.content;
 }
 
+
 //LINEreplyAPIで3日分のメニューを返信
 function doPost(e) {
-  //LINE Messaging APIのチャネルアクセストークンを設定
-  const token = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_TOKEN");
+  //スクリプトプロパティから前回の呼び出し時間を取得
+  const lastCallTime = PropertiesService.getScriptProperties().getProperty("lastCallTime");
 
-  // Webhookで取得したJSONデータをオブジェクト化し、取得
-  const eventData = JSON.parse(e.postData.contents).events[0];
-  //取得したデータから、応答用のトークンを取得
-  const replyToken = eventData.replyToken;
+  //前回の呼び出し時間がある場合、現在の時間と比較し、一定時間内に呼び出されているかをチェック
+  if(lastCallTime){
+    const currentTime = new Date().getTime();
+    const timeDiff = currentTime - lastCallTime;
+    if(timeDiff < 10000){ //10秒以内に呼び出されていた場合
+      return;
+    } else {
+      //現在の時間をスクリプトプロパティに保存
+      PropertiesService.getScriptProperties().setProperty("lastCallTime", new Date().getTime());
 
-  //取得したデータから、ユーザーが投稿したメッセージを取得
-  const userMessage = eventData.message.text;
+      //LINE Messaging APIのチャネルアクセストークンを設定
+      const token = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_TOKEN");
 
-  if(eventData.message.text == "おい、飯"){
+      // Webhookで取得したJSONデータをオブジェクト化し、取得
+      const eventData = JSON.parse(e.postData.contents).events[0];
+      //取得したデータから、応答用のトークンを取得
+      const replyToken = eventData.replyToken;
 
-    // 応答メッセージ用のAPI URLを定義
-    const url = 'https://api.line.me/v2/bot/message/reply';
+      //取得したデータから、ユーザーが投稿したメッセージを取得
+      const userMessage = eventData.message.text;
 
-    const messages = [];
-    messages.push({ 'type': 'text', 'text': getMenuTable(0).text +"\n\n"+ getMenuTable(1).text +"\n\n"+ getMenuTable(2).text})
+      if(eventData.message.text == "おい、飯"){
 
-    //APIリクエスト時にセットするペイロード値を設定する
-    const payload = {
-      'replyToken': replyToken,
-      'messages': messages
-    };
+        // 応答メッセージ用のAPI URLを定義
+        const url = 'https://api.line.me/v2/bot/message/reply';
 
-    //HTTPSのPOST時のオプションパラメータを設定する
-    const options = {
-      'payload': JSON.stringify(payload),
-      'myamethod': 'POST',
-      'headers': { "Authorization": "Bearer " + token },
-      'contentType': 'application/json'
-    };
+        const messages = [];
+        messages.push({ 'type': 'text', 'text': getMenuTable(0).text +"\n\n"+ getMenuTable(1).text +"\n\n"+ getMenuTable(2).text})
 
-    //LINE Messaging APIにリクエストし、ユーザーからの投稿に返答する
-    UrlFetchApp.fetch(url, options);
-      postDiscord(eventData.message.text,"TZU学食bot",GAKUSHOKU_LOG_WEBHOOK_URL); //Discordにログを残す
-  }else{
-    postDiscord(eventData.message.text,"TZU学食bot",GAKUSHOKU_LOG_WEBHOOK_URL);
+        //APIリクエスト時にセットするペイロード値を設定する
+        const payload = {
+          'replyToken': replyToken,
+          'messages': messages
+        };
+
+        //HTTPSのPOST時のオプションパラメータを設定する
+        const options = {
+          'payload': JSON.stringify(payload),
+          'myamethod': 'POST',
+          'headers': { "Authorization": "Bearer " + token },
+          'contentType': 'application/json'
+        };
+
+        //LINE Messaging APIにリクエストし、ユーザーからの投稿に返答する
+        UrlFetchApp.fetch(url, options);
+          postDiscord(eventData.message.text + timeDiff,"ログ",GAKUSHOKU_LOG_WEBHOOK_URL); //Discordにログを残す
+        }else{
+        postDiscord(eventData.message.text,"ログ",GAKUSHOKU_LOG_WEBHOOK_URL);
+
+
+      }
+    }
   }
 }
