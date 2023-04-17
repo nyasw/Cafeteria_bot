@@ -4,18 +4,33 @@ function dailyPost(){
 
   if(menuTable.status == "ok"){
     console.log(menuTable.text);
-    postLine(menuTable.text);
+    // postLine(menuTable.text);     //　LINEへの毎朝投稿は廃止しました
     postDiscord(menuTable.text,"TZU学食ぞぞこbot",MANKEN_WEBHOOK_URL);
     postDiscord(menuTable.text,"TZU学食bot",GAKUSHOKU_WEBHOOK_URL);
     postSheet(menuTable.menuArray.date , menuTable.menuArray.title , menuTable.menuArray.price);
-    gptCall(menuTable.text);
+    postDiscord(PropertiesService.getScriptProperties().getProperty("TodaysMenuAI"),"TZU高級学食bot",GAKUSHOKU_GPT_WEBHOOK_URL);
   } else {
     console.log(menuTable.status);
   }
 }
 
+//3日分のメニューを取得(15時ごろに実行)
+function set3daysMenuTable() {
+  const yesterdayMenu = getMenuTable(1)
+  const menu = yesterdayMenu.text +"\n\n"+ getMenuTable(2).text +"\n\n"+ getMenuTable(3).text;
+  PropertiesService.getScriptProperties().setProperty("TodaysMenuTable",menu); 
+      //console.log(PropertiesService.getScriptProperties().getProperty("TodaysMenuTable"))
+
+  if(yesterdayMenu.status == 'ok'){
+    gptCall(getMenuTable(1).text);
+    console.log(PropertiesService.getScriptProperties().getProperty("TodaysMenuAI"));
+  } else{
+    PropertiesService.getScriptProperties().setProperty("TodaysMenuAI","データなし"); 
+  }
+}
+
 //メニュー表取得
-function getMenuTable(days) {
+function getMenuTable(days = 0) {
 
   // 対象ページのURL
   var getUrl = getMenuURLByRelativeDate(days);
@@ -125,7 +140,8 @@ function gptCall(menuTexts) {
   console.log(request);
 
   var responce = requestChatgpt(request);
-  postDiscord(responce,"TZU高級学食bot",GAKUSHOKU_GPT_WEBHOOK_URL);
+
+  PropertiesService.getScriptProperties().setProperty("TodaysMenuAI",responce); 
 }
 
 //GPTのAPI
@@ -169,13 +185,13 @@ function doPost(e) {
 
   //前回の呼び出し時間がある場合、現在の時間と比較し、一定時間内に呼び出されているかをチェック
   if(lastCallTime){
-    const currentTime = new Date().getTime();
+    const currentTime =new Date().getTime();
     const timeDiff = currentTime - lastCallTime;
-    if(timeDiff < 10000){ //10秒以内に呼び出されていた場合
+    if(timeDiff < 3000){ //10秒以内に呼び出されていた場合
       return;
     } else {
       //現在の時間をスクリプトプロパティに保存
-      PropertiesService.getScriptProperties().setProperty("lastCallTime", new Date().getTime());
+      PropertiesService.getScriptProperties().setProperty("lastCallTime",new Date().getTime());
 
       //LINE Messaging APIのチャネルアクセストークンを設定
       const token = PropertiesService.getScriptProperties().getProperty("LINE_CHANNEL_TOKEN");
@@ -188,13 +204,17 @@ function doPost(e) {
       //取得したデータから、ユーザーが投稿したメッセージを取得
       const userMessage = eventData.message.text;
 
-      if(eventData.message.text == "おい、飯"){
+      if(eventData.message.text == "MENU"){
+
 
         // 応答メッセージ用のAPI URLを定義
         const url = 'https://api.line.me/v2/bot/message/reply';
 
         const messages = [];
-        messages.push({ 'type': 'text', 'text': getMenuTable(0).text +"\n\n"+ getMenuTable(1).text +"\n\n"+ getMenuTable(2).text})
+        messages.push({
+          'type': 'text',
+          'text': PropertiesService.getScriptProperties().getProperty("TodaysMenuTable")
+          })
 
         //APIリクエスト時にセットするペイロード値を設定する
         const payload = {
@@ -212,8 +232,38 @@ function doPost(e) {
 
         //LINE Messaging APIにリクエストし、ユーザーからの投稿に返答する
         UrlFetchApp.fetch(url, options);
-          postDiscord(eventData.message.text + timeDiff,"ログ",GAKUSHOKU_LOG_WEBHOOK_URL); //Discordにログを残す
-        }else{
+          postDiscord(eventData.message.text + timeDiff/1000/60 + "分","ログ",GAKUSHOKU_LOG_WEBHOOK_URL); //Discordにログを残す
+
+      }else if (eventData.message.text == "AI_MENU"){
+
+        // 応答メッセージ用のAPI URLを定義
+        const url = 'https://api.line.me/v2/bot/message/reply';
+
+        const messages = [];
+        messages.push({
+          'type': 'text',
+          'text': PropertiesService.getScriptProperties().getProperty("TodaysMenuAI")
+          })
+
+        //APIリクエスト時にセットするペイロード値を設定する
+        const payload = {
+          'replyToken': replyToken,
+          'messages': messages
+        };
+
+        //HTTPSのPOST時のオプションパラメータを設定する
+        const options = {
+          'payload': JSON.stringify(payload),
+          'myamethod': 'POST',
+          'headers': { "Authorization": "Bearer " + token },
+          'contentType': 'application/json'
+        };
+
+        //LINE Messaging APIにリクエストし、ユーザーからの投稿に返答する
+        UrlFetchApp.fetch(url, options);
+          postDiscord(eventData.message.text + timeDiff/1000/60 + "分","ログ",GAKUSHOKU_LOG_WEBHOOK_URL); //Discordにログを残す
+          
+      }else{
         postDiscord(eventData.message.text,"ログ",GAKUSHOKU_LOG_WEBHOOK_URL);
 
 
@@ -221,3 +271,15 @@ function doPost(e) {
     }
   }
 }
+
+function After3pmOffset() {
+  const now = new Date(); // 現在時刻を取得する
+  const hour = now.getHours(); // 現在の時間を取得する
+
+  if (hour >= 15) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
